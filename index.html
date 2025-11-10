@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echo | RCE - Rust Console Edition</title>
+    <style>
+        /* ========== THEME SYSTEM ========== */
+        :root {
+            --primary: #ff6b00;
+            --secondary: #1a1a2e;
+            --accent: #16213e;
+            --text: #ffffff;
+            --text-secondary: #b0b0b0;
+            --background: #0f0f1e;
+            --surface: #1e1e3a;
+            --border: #2a2a4a;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --danger: #f44336;
+        }
+
+        [data-theme="light"] {
+            --primary: #ff6b00;
+            --secondary: #f0f0f0;
+            --accent: #e0e0e0;
+            --text: #1a1a2e;
+            --text-secondary: #555555;
+            --background: #ffffff;
+            --surface: #f5f5f5;
+            --border: #d0d0d0;
+        }
+
+        [data-theme="rusted"] {
+            --primary: #b7410e;
+            --secondary: #2c1810;
+            --accent: #3a2418;
+            --text: #d4c4b0;
+            --text-secondary: #8c7b69;
+            --background: #1a0f0a;
+            --surface: #2c1810;
+            --border: #4a2c1a;
+        }
+
+        /* ========== BASE STYLES ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            transition: all 0.3s ease;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--secondary);
+            padding: 1rem 2rem;
+            border-bottom: 2px solid var(--primary);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            transition: color 0.3s;
+            cursor: pointer;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Theme Switcher */
+        .theme-switcher {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .theme-btn {
+            width: 30px;
+            height: 30px;
+            border: 2px solid var(--border);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .theme-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .theme-dark { background: #0f0f1e; }
+        .theme-light { background: #ffffff; }
+        .theme-rusted { background: #1a0f0a; }
+
+        main {
+            flex: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+        }
+
+        section {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+
+        section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ========== HOME SECTION ========== */
+        .hero {
+            text-align: center;
+            padding: 4rem 0;
+            background: linear-gradient(135deg, var(--secondary), var(--accent));
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                var(--primary) 10px,
+                var(--primary) 20px
+            );
+            opacity: 0.05;
+            animation: slide 20s linear infinite;
+        }
+
+        @keyframes slide {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        .hero h1 {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .server-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            padding: 1.5rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            text-align: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        /* ========== SERVER STATUS SECTION ========== */
+        .server-status {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        .manual-update {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .player-count-input {
+            padding: 0.5rem;
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            color: var(--text);
+            width: 120px;
+        }
+
+        /* ========== COMMENTS SECTION ========== */
+        .comments-container {
+            background: var(--surface);
+            border-radius: 10px;
+            padding: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        .comment-form {
+            margin-bottom: 2rem;
+        }
+
+        .comment-input {
+            width: 100%;
+            padding: 1rem;
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            color: var(--text);
+            margin-bottom: 1rem;
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .comment-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn:hover {
+            filter: brightness(1.2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .btn-secondary {
+            background: var(--accent);
+        }
+
+        .comment {
+            background: var(--background);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--primary);
+        }
+
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .comment-author {
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .comment-date {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* ========== GAMES SECTION ========== */
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .game-card {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .game-card:hover {
+            border-color: var(--primary);
+            transform: scale(1.02);
+        }
+
+        .game-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        /* ========== UNO GAME STYLES ========== */
+        .uno-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .uno-hand {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin: 1rem 0;
+            min-height: 120px;
+            padding: 1rem;
+            background: var(--background);
+            border-radius: 8px;
+        }
+
+        .uno-card {
+            width: 60px;
+            height: 90px;
+            border: 2px solid #000;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.5rem;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        .uno-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .uno-card.red { background: #ff5555; }
+        .uno-card.blue { background: #5555ff; }
+        .uno-card.green { background: #55ff55; color: #000; }
+        .uno-card.yellow { background: #ffff55; color: #000; }
+        .uno-card.wild { background: linear-gradient(45deg, #000, #333); }
+
+        .uno-discard {
+            text-align: center;
+            margin: 2rem 0;
+            padding: 2rem;
+            background: var(--background);
+            border-radius: 8px;
+        }
+
+        .discard-pile {
+            display: inline-block;
+            margin-left: 1rem;
+        }
+
+        /* ========== TIC-TAC-TOE ========== */
+        .tic-tac-toe {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            gap: 5px;
+            margin: 2rem auto;
+            width: fit-content;
+        }
+
+        .ttt-cell {
+            width: 100px;
+            height: 100px;
+            background: var(--surface);
+            border: 2px solid var(--border);
+            font-size: 2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+
+        .ttt-cell:hover {
+            background: var(--accent);
+        }
+
+        .ttt-cell.winner {
+            background: var(--success);
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .nav-links { gap: 1rem; }
+            .logo { font-size: 1.5rem; }
+            .manual-update { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body data-theme="dark">
+    <header>
+        <nav>
+            <div class="logo">ECHO | RCE</div>
+            <div class="nav-links">
+                <a onclick="showSection('home')">Home</a>
+                <a onclick="showSection('comments')">Comments</a>
+                <a onclick="showSection('games')">Games</a>
+                <div class="theme-switcher">
+                    <div class="theme-btn theme-dark" onclick="setTheme('dark')" title="Dark Theme"></div>
+                    <div class="theme-btn theme-light" onclick="setTheme('light')" title="Light Theme"></div>
+                    <div class="theme-btn theme-rusted" onclick="setTheme('rusted')" title="Rusted Theme"></div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <!-- HOME SECTION -->
+        <section id="home" class="active">
+            <div class="hero">
+                <h1>ECHO | RCE</h1>
+                <p>Rust Console Edition Community Server</p>
+                
+                <div class="server-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="playerCount">--</div>
+                        <div>Players Online</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">100x</div>
+                        <div>Gather Rate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">Weekly</div>
+                        <div>Wipes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">NoBP</div>
+                        <div>Blueprints</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SERVER STATUS SECTION -->
+            <div class="server-status">
+                <h2 style="color: var(--primary); margin-bottom: 1rem;">🎮 Server Status</h2>
+                <p><strong>Server Name:</strong> Echo | RCE | 100x | Weekly | NoBP</p>
+                <p><strong>Region:</strong> North America</p>
+                <p><strong>Platform:</strong> PlayStation & Xbox</p>
+                
+                <div class="manual-update">
+                    <label><strong>Manual Player Count:</strong></label>
+                    <input type="number" id="manualPlayerCount" class="player-count-input" placeholder="--" min="0" max="100">
+                    <button class="btn btn-secondary" onclick="updatePlayerCount()">Update</button>
+                </div>
+                
+                <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+                    💡 *Player count updates manually. Ask an admin to update when in-game.*
+                </p>
+            </div>
+
+            <div class="stat-card">
+                <h2 style="color: var(--primary); margin-bottom: 1rem;">Wipe Schedule</h2>
+                <p><strong>Last Wipe:</strong> <span id="lastWipe">Loading...</span></p>
+                <p><strong>Next Wipe:</strong> <span id="nextWipe">Loading...</span></p>
+                <p style="margin-top: 0.5rem; color: var(--text-secondary);">
+                    Console Edition wipes every Thursday at 7 PM EST
+                </p>
+            </div>
+        </section>
+
+        <!-- COMMENTS SECTION -->
+        <section id="comments">
+            <div class="comments-container">
+                <h2 style="color: var(--primary); margin-bottom: 1rem;">💬 Community Comments</h2>
+                
+                <div class="comment-form">
+                    <input type="text" id="commentName" class="comment-input" style="min-height: auto; height: 50px;" placeholder="Your PSN/Xbox Gamertag...">
+                    <textarea id="commentText" class="comment-input" placeholder="Share base coords, trade offers, or team recruitment..."></textarea>
+                    <button class="btn" onclick="addComment()">Post Comment</button>
+                </div>
+
+                <div id="commentsList"></div>
+            </div>
+        </section>
+
+        <!-- GAMES SECTION -->
+        <section id="games">
+            <h2 style="color: var(--primary); text-align: center; margin-bottom: 2rem;">🎮 Mini Games (Play While in Queue!)</h2>
+            
+            <div class="games-grid">
+                <div class="game-card" onclick="showSection('uno-game')">
+                    <div class="game-icon">🃏</div>
+                    <h3>UNO</h3>
+                    <p>Play UNO while waiting in queue</p>
+                    <button class="btn" style="margin-top: 1rem;">Play Now</button>
+                </div>
+
+                <div class="game-card" onclick="showSection('tic-tac-toe-game')">
+                    <div class="game-icon">❌⭕</div>
+                    <h3>Tic-Tac-Toe</h3>
+                    <p>Quick game during loading screens</p>
+                    <button class="btn" style="margin-top: 1rem;">Play Now</button>
+                </div>
+
+                <div class="game-card" onclick="alert('Coming Soon!')">
+                    <div class="game-icon">🎲</div>
+                    <h3>Roll Race</h3>
+                    <p>Dice game for base defense bets</p>
+                    <button class="btn" style="margin-top: 1rem;">Soon</button>
+                </div>
+
+                <div class="game-card" onclick="alert('Coming Soon!')">
+                    <div class="game-icon">💬</div>
+                    <h3>Team Finder</h3>
+                    <p>Recruit players for your team</p>
+                    <button class="btn" style="margin-top: 1rem;">Soon</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- UNO GAME SECTION -->
+        <section id="uno-game">
+            <button class="btn btn-secondary" onclick="showSection('games')" style="margin-bottom: 1rem;">← Back to Games</button>
+            <div class="uno-container">
+                <h2 style="color: var(--primary); text-align: center; margin-bottom: 1rem;">UNO Game</h2>
+                
+                <div class="uno-discard">
+                    <h3>Discard Pile</h3>
+                    <div class="discard-pile">
+                        <div class="uno-card" id="discardCard" style="font-size: 1rem;">Start</div>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin: 1rem 0;">
+                    <button class="btn" onclick="unoDrawCard()">Draw Card</button>
+                    <button class="btn" onclick="unoPass()">Pass</button>
+                </div>
+
+                <h3>Your Hand</h3>
+                <div class="uno-hand" id="playerHand"></div>
+            </div>
+        </section>
+
+        <!-- TIC-TAC-TOE GAME SECTION -->
+        <section id="tic-tac-toe-game">
+            <button class="btn btn-secondary" onclick="showSection('games')" style="margin-bottom: 1rem;">← Back to Games</button>
+            <div class="uno-container">
+                <h2 style="color: var(--primary); text-align: center; margin-bottom: 1rem;">Tic-Tac-Toe</h2>
+                <div style="text-align: center; margin-bottom: 1rem;">
+                    <span id="gameStatus">Your turn (X)</span>
+                </div>
+                <div class="tic-tac-toe" id="tttBoard">
+                    <div class="ttt-cell" onclick="tttClick(0)"></div>
+                    <div class="ttt-cell" onclick="tttClick(1)"></div>
+                    <div class="ttt-cell" onclick="tttClick(2)"></div>
+                    <div class="ttt-cell" onclick="tttClick(3)"></div>
+                    <div class="ttt-cell" onclick="tttClick(4)"></div>
+                    <div class="ttt-cell" onclick="tttClick(5)"></div>
+                    <div class="ttt-cell" onclick="tttClick(6)"></div>
+                    <div class="ttt-cell" onclick="tttClick(7)"></div>
+                    <div class="ttt-cell" onclick="tttClick(8)"></div>
+                </div>
+                <div style="text-align: center; margin-top: 1rem;">
+                    <button class="btn" onclick="tttReset()">New Game</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // ========== THEME SYSTEM ==========
+        function setTheme(theme) {
+            document.body.setAttribute('data-theme', theme);
+            localStorage.setItem('echo-theme', theme);
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('echo-theme') || 'dark';
+        setTheme(savedTheme);
+
+        // ========== NAVIGATION ==========
+        function showSection(sectionId) {
+            document.querySelectorAll('section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        // ========== COMMENTS SYSTEM ==========
+        let comments = JSON.parse(localStorage.getItem('echo-comments')) || [];
+
+        function addComment() {
+            const name = document.getElementById('commentName').value.trim();
+            const text = document.getElementById('commentText').value.trim();
+            
+            if (!name || !text) {
+                alert('Please fill in both name and comment!');
+                return;
+            }
+
+            const comment = {
+                id: Date.now(),
+                name: name,
+                text: text,
+                date: new Date().toLocaleString()
+            };
+
+            comments.unshift(comment);
+            localStorage.setItem('echo-comments', JSON.stringify(comments));
+            
+            document.getElementById('commentName').value = '';
+            document.getElementById('commentText').value = '';
+            
+            renderComments();
+        }
+
+        function renderComments() {
+            const commentsList = document.getElementById('commentsList');
+            
+            if (comments.length === 0) {
+                commentsList.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">No comments yet. Be the first!</p>';
+                return;
+            }
+
+            commentsList.innerHTML = comments.map(comment => `
+                <div class="comment">
+                    <div class="comment-header">
+                        <span class="comment-author">${escapeHtml(comment.name)}</span>
+                        <span class="comment-date">${comment.date}</span>
+                    </div>
+                    <div class="comment-text">${escapeHtml(comment.text)}</div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ========== MANUAL PLAYER COUNT ==========
+        function updatePlayerCount() {
+            const count = document.getElementById('manualPlayerCount').value;
+            if (count === '') {
+                alert('Please enter a player count!');
+                return;
+            }
+            document.getElementById('playerCount').textContent = `${count}/100`;
+            localStorage.setItem('echo-player-count', count);
+            alert('Player count updated! (Saved locally)');
+        }
+
+        // Load saved player count
+        function loadPlayerCount() {
+            const savedCount = localStorage.getItem('echo-player-count');
+            if (savedCount) {
+                document.getElementById('playerCount').textContent = `${savedCount}/100`;
+                document.getElementById('manualPlayerCount').value = savedCount;
+            } else {
+                document.getElementById('playerCount').textContent = '--/100';
+            }
+        }
+
+        // ========== UNO GAME LOGIC ==========
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const values = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Skip', 'Reverse', '+2'];
+        let playerHand = [];
+        let discardPile = [];
+        let currentColor = 'red';
+        let currentValue = '0';
+
+        function createUnoDeck() {
+            const deck = [];
+            for (let color of colors) {
+                for (let value of values) {
+                    deck.push({ color, value });
+                    if (value !== '0') deck.push({ color, value });
+                }
+            }
+            for (let i = 0; i < 4; i++) {
+                deck.push({ color: 'wild', value: 'Wild' });
+                deck.push({ color: 'wild', value: '+4' });
+            }
+            return deck;
+        }
+
+        function shuffleDeck(deck) {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+        function startUnoGame() {
+            const deck = shuffleDeck(createUnoDeck());
+            playerHand = deck.splice(0, 7);
+            discardPile = [deck.pop()];
+            currentColor = discardPile[0].color;
+            currentValue = discardPile[0].value;
+            renderUnoGame();
+        }
+
+        function renderUnoGame() {
+            const handDiv = document.getElementById('playerHand');
+            const discardDiv = document.getElementById('discardCard');
+            
+            handDiv.innerHTML = playerHand.map((card, index) => `
+                <div class="uno-card ${card.color}" onclick="unoPlayCard(${index})">
+                    ${card.value}
+                </div>
+            `).join('');
+            
+            const topCard = discardPile[discardPile.length - 1];
+            discardDiv.className = `uno-card ${topCard.color}`;
+            discardDiv.textContent = topCard.value;
+        }
+
+        function unoPlayCard(index) {
+            const card = playerHand[index];
+            const topCard = discardPile[discardPile.length - 1];
+            
+            if (card.color === 'wild' || card.color === topCard.color || card.value === topCard.value) {
+                discardPile.push(card);
+                playerHand.splice(index, 1);
+                currentColor = card.color;
+                currentValue = card.value;
+                
+                if (card.value === '+2') {
+                    alert('Next player draws 2 cards!');
+                } else if (card.value === '+4') {
+                    alert('Next player draws 4 cards!');
+                } else if (card.value === 'Skip') {
+                    alert('Next player is skipped!');
+                }
+                
+                renderUnoGame();
+                
+                if (playerHand.length === 0) {
+                    alert('You win! 🎉');
+                    startUnoGame();
+                }
+            } else {
+                alert('You cannot play that card!');
+            }
+        }
+
+        function unoDrawCard() {
+            const colorsPool = ['red', 'blue', 'green', 'yellow'];
+            const valuesPool = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'Skip', 'Reverse', '+2'];
+            const newCard = {
+                color: colorsPool[Math.floor(Math.random() * colorsPool.length)],
+                value: valuesPool[Math.floor(Math.random() * valuesPool.length)]
+            };
+            playerHand.push(newCard);
+            renderUnoGame();
+        }
+
+        function unoPass() {
+            alert('You passed. Computer plays...');
+            setTimeout(() => {
+                const playableIndex = playerHand.findIndex(card => 
+                    card.color === currentColor || card.value === currentValue || card.color === 'wild'
+                );
+                
+                if (playableIndex !== -1) {
+                    unoPlayCard(playableIndex);
+                } else {
+                    unoDrawCard();
+                    alert('Computer drew a card.');
+                }
+            }, 1000);
+        }
+
+        // ========== TIC-TAC-TOE LOGIC ==========
+        let tttBoard = ['', '', '', '', '', '', '', '', ''];
+        let tttCurrentPlayer = 'X';
+
+        function tttClick(index) {
+            if (tttBoard[index] || checkWinner()) return;
+            
+            tttBoard[index] = tttCurrentPlayer;
+            tttCurrentPlayer = tttCurrentPlayer === 'X' ? 'O' : 'X';
+            renderTTT();
+            
+            const winner = checkWinner();
+            if (winner) {
+                document.getElementById('gameStatus').textContent = winner === 'T' ? "It's a tie!" : `${winner} wins!`;
+            } else {
+                document.getElementById('gameStatus').textContent = `Player ${tttCurrentPlayer}'s turn`;
+            }
+        }
+
+        function renderTTT() {
+            const cells = document.querySelectorAll('.ttt-cell');
+            cells.forEach((cell, index) => {
+                cell.textContent = tttBoard[index];
+                cell.classList.remove('winner');
+            });
+            
+            const winPatterns = [
+                [0,1,2], [3,4,5], [6,7,8],
+                [0,3,6], [1,4,7], [2,5,8],
+                [0,4,8], [2,4,6]
+            ];
+            
+            for (let pattern of winPatterns) {
+                const [a, b, c] = pattern;
+                if (tttBoard[a] && tttBoard[a] === tttBoard[b] && tttBoard[a] === tttBoard[c]) {
+                    cells[a].classList.add('winner');
+                    cells[b].classList.add('winner');
+                    cells[c].classList.add('winner');
+                    break;
+                }
+            }
+        }
+
+        function checkWinner() {
+            const winPatterns = [
+                [0,1,2], [3,4,5], [6,7,8],
+                [0,3,6], [1,4,7], [2,5,8],
+                [0,4,8], [2,4,6]
+            ];
+            
+            for (let pattern of winPatterns) {
+                const [a, b, c] = pattern;
+                if (tttBoard[a] && tttBoard[a] === tttBoard[b] && tttBoard[a] === tttBoard[c]) {
+                    return tttBoard[a];
+                }
+            }
+            
+            if (tttBoard.every(cell => cell !== '')) return 'T';
+            return null;
+        }
+
+        function tttReset() {
+            tttBoard = ['', '', '', '', '', '', '', '', ''];
+            tttCurrentPlayer = 'X';
+            document.getElementById('gameStatus').textContent = "Your turn (X)";
+            renderTTT();
+        }
+
+        // ========== WIPE SCHEDULE ==========
+        function updateWipeDates() {
+            const now = new Date();
+            
+            // Console Edition wipes every Thursday at 7 PM EST
+            const lastWipe = new Date(now);
+            lastWipe.setDate(now.getDate() - (now.getDay() + 6) % 7); // Last Thursday
+            lastWipe.setHours(19, 0, 0, 0); // 7 PM EST
+            
+            // If today is before Thursday this week, go back one more week
+            if (now.getDay() < 4 || (now.getDay() === 4 && now.getHours() < 19)) {
+                lastWipe.setDate(lastWipe.getDate() - 7);
+            }
+            
+            const nextWipe = new Date(lastWipe);
+            nextWipe.setDate(lastWipe.getDate() + 7); // Next Thursday
+            
+            document.getElementById('lastWipe').textContent = lastWipe.toLocaleString();
+            document.getElementById('nextWipe').textContent = nextWipe.toLocaleString();
+        }
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            renderComments();
+            startUnoGame();
+            loadPlayerCount();
+            updateWipeDates();
+        });
+    </script>
+</body>
+</html>
